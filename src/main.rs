@@ -9,23 +9,23 @@ use std::{
 };
 
 fn main() {
-    let mut args = args().skip(1);
-    let mut files: Vec<_>  = Vec::with_capacity(args.len());
-    let mut output: Box<dyn FnMut(std::fmt::Arguments) -> std::io::Result<()>>
-        = Box::new(|a| std::io::stdout().write_fmt(a));
-    while let Some(name) = args.next() {
-        if name != "-o" {
-            files.push(BufReader::new(File::open(name).expect("valid filename")));
-        } else {
-            let mut out_file
-                = BufWriter::new(
+    let mut args = args().skip(1).peekable();
+    if args.len() == 0 {
+        println!("Usage: concat_z [-o out_file] file1 file2 ...");
+        return;
+    }
+    let mut output_file = match args.peek() {
+        Some(a) if a == "-o" => {
+            let _ = args.next().unwrap();
+            Some(BufWriter::new(
                     File::create(args.next()
                             .expect("'-o' should be followed by output file name"))
                         .expect("valid output file name")
-                );
-            output = Box::new(move |a| out_file.write_fmt(a));
-        }
-    }
+                ))
+        },
+        _ => None
+    };
+    let files: Vec<_> = args.map(|name| BufReader::new(File::open(name).expect("valid filename"))).collect();
     let mut buffer = String::new();
     let mut last_id: f64 = -std::f64::MAX;
     for mut file in files {
@@ -40,7 +40,10 @@ fn main() {
                         .parse()
                         .expect("first column must be f64");
                     if new_id > last_id {
-                        output(format_args!("{}", &buffer)).unwrap();
+                        match &mut output_file {
+                            Some(f) => f.write_fmt(format_args!("{}", &buffer)).unwrap(),
+                            None => println!("{}", &buffer)
+                        }
                         last_id = new_id;
                     }
                 }
